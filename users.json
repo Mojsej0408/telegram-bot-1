@@ -6,8 +6,8 @@
     },
     "Doc Himick": {
         "role": "Зам Директора по Сотрудничеству",
-        "contracts": 0,
-        "families": 0
+        "contracts": 3,
+        "families": 3
     },
     "Barny Fisherez": {
         "role": "Менеджер по Сотрудничеству",
@@ -26,3 +26,4 @@
     }
 
 }
+
