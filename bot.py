@@ -1,7 +1,6 @@
 from telegram import (
     Update,
     ReplyKeyboardMarkup,
-    KeyboardButton,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     InputMediaPhoto
@@ -21,8 +20,8 @@ import uuid
 # ================= CONFIG =================
 TOKEN = os.getenv("BOT_TOKEN")
 
-GROUP_ID = -1003733753242
-REVIEW_GROUP_ID = -1003838204103
+GROUP_ID = -1003733753242          # ОСНОВНАЯ ГРУППА
+REVIEW_GROUP_ID = -1003838204103   # ГРУППА ПРОВЕРКИ
 MENTIONS = "@anonim228m @Quintide"
 
 DATA_FILE = "users.json"
@@ -150,28 +149,17 @@ async def photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👔 {users[nick]['role']}"
     )
 
-    media = [
-        InputMediaPhoto(open(context.user_data["screens"][0], "rb"), caption=caption),
-        InputMediaPhoto(open(context.user_data["screens"][1], "rb"))
-    ]
-
-    await context.bot.send_media_group(GROUP_ID, media)
-
+    # ---- СОХРАНЯЕМ ЗАЯВКУ ----
     req_id = str(uuid.uuid4())
     pending[req_id] = {
         "nick": nick,
         "chat_id": update.effective_chat.id,
-        "type": state
+        "type": state,
+        "screens": context.user_data["screens"]
     }
     save_pending(pending)
 
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ Принять", callback_data=f"approve:{req_id}"),
-            InlineKeyboardButton("❌ Отклонить", callback_data=f"reject:{req_id}")
-        ]
-    ])
-
+    # ---- ОТПРАВКА ТОЛЬКО В ГРУППУ ПРОВЕРКИ ----
     media_review = [
         InputMediaPhoto(
             open(context.user_data["screens"][0], "rb"),
@@ -179,6 +167,13 @@ async def photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ),
         InputMediaPhoto(open(context.user_data["screens"][1], "rb"))
     ]
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Принять", callback_data=f"approve:{req_id}"),
+            InlineKeyboardButton("❌ Отклонить", callback_data=f"reject:{req_id}")
+        ]
+    ])
 
     await context.bot.send_media_group(REVIEW_GROUP_ID, media_review)
     await context.bot.send_message(REVIEW_GROUP_ID, "Выберите действие:", reply_markup=keyboard)
@@ -200,17 +195,33 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     data = pending[req_id]
+    nick = data["nick"]
+    req_type = data["type"]
 
     if action == "approve":
-        nick = data["nick"]
-        req_type = data["type"]  # contract / family
-
+        # ---- ОБНОВЛЯЕМ СТАТИСТИКУ ----
         if req_type == "contract":
             users[nick]["contracts"] += 1
         elif req_type == "family":
             users[nick]["families"] += 1
 
         save_users()
+
+        # ---- ПУБЛИКАЦИЯ В ОСНОВНУЮ ГРУППУ ----
+        screens = data["screens"]
+
+        caption = (
+            f"✅ {'Контракт' if req_type == 'contract' else 'Семья'} ОДОБРЕН\n"
+            f"👤 {nick}\n"
+            f"👔 {users[nick]['role']}"
+        )
+
+        media = [
+            InputMediaPhoto(open(screens[0], "rb"), caption=caption),
+            InputMediaPhoto(open(screens[1], "rb"))
+        ]
+
+        await context.bot.send_media_group(GROUP_ID, media)
 
         await context.bot.send_message(
             data["chat_id"],
@@ -220,13 +231,11 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending.pop(req_id)
         save_pending(pending)
 
-        await query.message.reply_text("✅ Заявка одобрена и сохранена.")
+        await query.message.reply_text("✅ Заявка одобрена и опубликована.")
 
     elif action == "reject":
         context.chat_data["reject_id"] = req_id
-        await query.message.reply_text(
-            "❌ Напишите причину отказа одним сообщением:"
-        )
+        await query.message.reply_text("❌ Напишите причину отказа одним сообщением:")
 
 # ================= REJECT REASON =================
 async def reject_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -243,9 +252,7 @@ async def reject_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     context.chat_data.pop("reject_id", None)
-
     await update.message.reply_text("🚫 Отказ отправлён пользователю.")
-
 
 # ================= MAIN =================
 def main():
@@ -253,32 +260,25 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
 
-# 🔴 1. ПРИЧИНА ОТКАЗА — ПЕРВОЙ И ТОЛЬКО В ГРУППАХ
     app.add_handler(MessageHandler(
-    filters.TEXT & filters.ChatType.GROUPS,
-    reject_reason
-))
+        filters.TEXT & filters.ChatType.GROUPS,
+        reject_reason
+    ))
 
-# 🔹 кнопки меню (ЛС)
     app.add_handler(MessageHandler(
-    filters.TEXT & filters.Regex(
-        "^(📊 Общая статистика|➕ Добавить контракт|👨‍👩‍👧 Добавить семью|📈 UMO статистика)$"
-    ),
-    menu_handler
-))
+        filters.TEXT & filters.Regex(
+            "^(📊 Общая статистика|➕ Добавить контракт|👨‍👩‍👧 Добавить семью|📈 UMO статистика)$"
+        ),
+        menu_handler
+    ))
 
-# 🔹 авторизация (ТОЛЬКО ЛС)
     app.add_handler(MessageHandler(
-    filters.TEXT & filters.ChatType.PRIVATE & ~filters.COMMAND,
-    auth
-))
+        filters.TEXT & filters.ChatType.PRIVATE & ~filters.COMMAND,
+        auth
+    ))
 
-# 🔹 фото
     app.add_handler(MessageHandler(filters.PHOTO, photos))
-
-# 🔹 inline-кнопки
     app.add_handler(CallbackQueryHandler(callbacks))
-
 
     app.run_polling()
 
