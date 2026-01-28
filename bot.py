@@ -181,7 +181,7 @@ async def photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["state"] = None
     context.user_data["screens"] = []
 
-    await update.message.reply_text("✅ Заявка отправлена руководству.")
+    await update.message.reply_text("✅ Заявка отправлена на проверку руководству.")
 
 # ================= CALLBACKS =================
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -284,3 +284,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
